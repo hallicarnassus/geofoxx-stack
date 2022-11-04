@@ -5,16 +5,30 @@ source /scripts/env-data.sh
 source /scripts/functions.sh
 
 resources_dir="/tmp/resources"
+GS_VERSION=$(cat /scripts/geoserver_version.txt)
 create_dir ${resources_dir}/plugins/gdal
 create_dir /usr/share/fonts/opentype
-create_dir ${EXTRA_CONFIG_DIR}/tomcat_apps
+create_dir /tomcat_apps
 create_dir "${CATALINA_HOME}"/postgres_config
+create_dir "${STABLE_PLUGINS_DIR}"
+create_dir "${COMMUNITY_PLUGINS_DIR}"
+create_dir "${GEOSERVER_HOME}"
+
+pushd "${CATALINA_HOME}" || exit
+
+
+# Download geoserver and install it
+package_geoserver
+
+# Copy config files
+cp /build_data/stable_plugins.txt /stable_plugins && cp /build_data/community_plugins.txt /community_plugins && \
+cp /build_data/letsencrypt-tomcat.xsl ${CATALINA_HOME}/conf/ssl-tomcat.xsl
 
 validate_url http://ftp.br.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8_all.deb && \
  dpkg -i ttf-mscorefonts-installer_3.8_all.deb && rm ttf-mscorefonts-installer_3.8_all.deb
 
 
-pushd /stable_plugins || exit
+pushd "${STABLE_PLUGINS_DIR}" || exit
 
 # Check if we have pre downloaded plugin yet
 stable_count=$(ls -1 $resources_dir/plugins/stable_plugins/*.zip 2>/dev/null | wc -l)
@@ -41,7 +55,7 @@ else
 fi
 
 # Download community extensions. This needs to be checked on each iterations as they sometimes become unavailable
-pushd /community_plugins || exit
+pushd "${COMMUNITY_PLUGINS_DIR}" || exit
 
 if [ -z "${DOWNLOAD_ALL_COMMUNITY_EXTENSIONS}" ] || [ "${DOWNLOAD_ALL_COMMUNITY_EXTENSIONS}" -eq 0 ]; then
   plugin=$(head -n 1 /community_plugins/community_plugins.txt)
@@ -69,32 +83,15 @@ done
 
 
 # Install libjpeg-turbo
+system_architecture=$(dpkg --print-architecture)
 if [[ ! -f ${resources_dir}/libjpeg-turbo-official_2.1.3_amd64.deb ]]; then
-  validate_url https://liquidtelecom.dl.sourceforge.net/project/libjpeg-turbo/2.1.3/libjpeg-turbo-official_2.1.3_amd64.deb \
+  validate_url https://tenet.dl.sourceforge.net/project/libjpeg-turbo/2.1.4/libjpeg-turbo-official_2.1.4_${system_architecture}.deb \
     '-P /tmp/resources/'
 fi
 
-dpkg -i ${resources_dir}/libjpeg-turbo-official_2.1.3_amd64.deb
+dpkg -i ${resources_dir}/libjpeg-turbo-official_2.1.4_${system_architecture}.deb
 
 pushd "${CATALINA_HOME}" || exit
-
-# Download geoserver
-download_geoserver
-
-# Install geoserver in the tomcat dir
-if [[ -f /tmp/geoserver/geoserver.war ]]; then
-  unzip /tmp/geoserver/geoserver.war -d "${CATALINA_HOME}"/webapps/geoserver &&
-  cp -r "${CATALINA_HOME}"/webapps/geoserver/data "${CATALINA_HOME}" &&
-  mv "${CATALINA_HOME}"/data/security "${CATALINA_HOME}" &&
-  rm -rf "${CATALINA_HOME}"/webapps/geoserver/data &&
-  mv "${CATALINA_HOME}"/webapps/geoserver/WEB-INF/lib/postgresql-* "${CATALINA_HOME}"/postgres_config/ &&
-  rm -rf /tmp/geoserver
-else
-  cp -r /tmp/geoserver/* "${GEOSERVER_HOME}"/ &&
-  cp -r "${GEOSERVER_HOME}"/webapps/geoserver "${CATALINA_HOME}"/webapps/geoserver &&
-  cp -r "${GEOSERVER_HOME}"/data_dir "${CATALINA_HOME}"/data &&
-  mv "${CATALINA_HOME}"/data/security "${CATALINA_HOME}"
-fi
 
 # Install GeoServer plugins in correct install dir
 if [[ -f ${GEOSERVER_HOME}/start.jar ]]; then
@@ -162,17 +159,15 @@ rm -f /tmp/resources/overlays/README.txt &&
 
 # Package tomcat webapps - useful to activate later
 if [ -d "$CATALINA_HOME"/webapps.dist ]; then
-    mv "$CATALINA_HOME"/webapps.dist ${EXTRA_CONFIG_DIR}/tomcat_apps &&
-    pushd "${EXTRA_CONFIG_DIR}" || exit &&
-    zip -r tomcat_apps.zip tomcat_apps && rm -r tomcat_apps
+    mv "$CATALINA_HOME"/webapps.dist /tomcat_apps &&
+    zip -r /tomcat_apps.zip /tomcat_apps && rm -r /tomcat_apps
 else
-    cp -r "${CATALINA_HOME}"/webapps/ROOT ${EXTRA_CONFIG_DIR}/tomcat_apps &&
-    cp -r "${CATALINA_HOME}"/webapps/docs ${EXTRA_CONFIG_DIR}/tomcat_apps &&
-    cp -r "${CATALINA_HOME}"/webapps/examples ${EXTRA_CONFIG_DIR}/tomcat_apps &&
-    cp -r "${CATALINA_HOME}"/webapps/host-manager ${EXTRA_CONFIG_DIR}/tomcat_apps &&
-    cp -r "${CATALINA_HOME}"/webapps/manager ${EXTRA_CONFIG_DIR}/tomcat_apps &&
-    pushd "${EXTRA_CONFIG_DIR}" || exit &&
-    zip -r tomcat_apps.zip tomcat_apps && rm -r tomcat_apps
+    cp -r "${CATALINA_HOME}"/webapps/ROOT /tomcat_apps &&
+    cp -r "${CATALINA_HOME}"/webapps/docs /tomcat_apps &&
+    cp -r "${CATALINA_HOME}"/webapps/examples /tomcat_apps &&
+    cp -r "${CATALINA_HOME}"/webapps/host-manager /tomcat_apps &&
+    cp -r "${CATALINA_HOME}"/webapps/manager /tomcat_apps &&
+    zip -r /tomcat_apps.zip /tomcat_apps && rm -r /tomcat_apps
 fi
 
 # Delete resources after installation

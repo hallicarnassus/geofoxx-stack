@@ -1,11 +1,11 @@
 version: '3.9'
 
 volumes:
-   geoserver-data:
-   geo-db-data:
+  geoserver-data:
+  geo-db-data:
 
 services:
-   db:
+    db:
       image: kartoza/postgis:${POSTGIS_VERSION_TAG}
       volumes:
         - geo-db-data:/var/lib/postgresql
@@ -21,8 +21,21 @@ services:
       healthcheck:
         test: "exit 0"
 
-   geoserver:
-      image: kartoza/geoserver:${GS_VERSION}
+    # db-dbbackups:
+    #   container_name: pg-backup
+    #   image: kartoza/pg-backup:${POSTGIS_VERSION_TAG}
+    #   volumes:
+    #     - db-backups:/backups
+    #   env_file:
+    #     - /home/luke/git/GeoServerAWS/docker-env/db-backups.env
+    #   restart: on-failure
+    #   depends_on:
+    #     - db
+
+    geoserver:
+      image: geofoxx/geoserver:${GS_VERSION}
+      build:
+        context: ./image/GeoServer
       volumes:
         - geoserver-data:/opt/geoserver/data_dir
       restart: on-failure
@@ -42,16 +55,102 @@ services:
         timeout: 10s
         retries: 3
 
-   nginx:
-     image: nginx
-     volumes:
-       - ./sites-enabled:/etc/nginx/conf.d:ro
-     logging:
-       driver: json-file
-       options:
-         max-size: 200m
-         max-file: '10'
-     depends_on:
-       - geoserver
-     ports:
-       - "80:80"
+    # openldap:
+    #   image: osixia/openldap:latest
+    #   container_name: openldap
+    #   domainname: "geofoxx.tech" # important: same as hostname
+    #   hostname: "openldap"
+    #   restart: on-failure
+    #   env_file:
+    #     - /home/luke/git/GeoServerAWS/docker-env/openldap.env
+    #   tty: true
+    #   stdin_open: true
+    #   volumes:
+    #     - /var/lib/ldap
+    #     - /etc/ldap/slapd.d
+    #     - /container/service/slapd/assets/certs/
+    #   ports:
+    #     - "389:389"
+    #     - "636:636"
+    #   depends_on:
+    #     - nginx-proxy
+
+  #   ldapadmin:
+  #     build: ./image/phpLDAPadmin
+  #     image: osixia/phpldapadmin:latest
+  #     build: 
+  #       context: ./image/phpLDAPadmin
+  #     container_name: phpldapadmin
+  #     # hostname: "ldapadmin"
+  #     restart: on-failure
+  #     volumes:
+  #       - ./htdocs:/var/www/phpldapadmin/htdocs
+  # #    volumes:
+  # #      - ./image/phpLDAPadmin/htdocs:/var/www/phpldapadmin/htdocs
+  #       - /home/luke/git/GeoServerAWS/resources/certs:/container/service/ldap-client/assets/certs
+  #       - /home/luke/git/GeoServerAWS/image/phpLDAPadmin/image/service/phpldapadmin/assets/config/config.php:/var/www/phpldapadmin/config/config.php
+  #     expose:
+  #       - 80
+  #     env_file: 
+  #       - /home/luke/git/GeoServerAWS/docker-env/phpldapadmin.env
+  #     healthcheck:
+  #       test: "${LDAPADMIN_HEALTHCHECK:-curl -f -s http://localhost/phpldapadmin/index.php || exit 1}"
+  #       interval: 30s
+  #       timeout: 10s
+  #       retries: 5
+  #     depends_on:
+  #       - openldap
+  #       - nginx-proxy
+
+    # gis-frontend:
+    #   build: 
+    #     context: ./image/nginx
+    #   container_name: gis-frontend
+    #   image: httpd:latest
+    #   volumes:
+    #     - ./gis-frontend/htdocs:/usr/local/apache2/htdocs
+    #   expose:
+    #     - 80
+    #   env_file:
+    #     - /home/luke/git/GeoServerAWS/docker-env/gis-frontend.env
+    #   environment:
+    #     VIRTUAL_HOST: geofoxx.tech
+    #     VIRTUAL_PORT: 80
+    #     VIRTUAL_PATH: /
+    #     VIRTUAL_PATH_DEST: /usr/local/apache2/htdocs
+
+    # pgadmin:
+    #   container_name: pgadmin
+    #   image: dpage/pgadmin4:latest
+    #   build: 
+    #     context: ./image/nginx
+    #   restart: always
+    #   env_file:
+    #     - /home/luke/git/GeoServerAWS/docker-env/pgadmin.env
+    #   expose:
+    #     - 80
+    #   volumes:
+    #     - pgadmin-data:/var/lib/pgadmin
+    #     - /data:/data 
+
+    nginx:
+      image: nginx
+      build: 
+        context: ./image/nginx
+      volumes:
+        - ./sites-enabled:/etc/nginx/conf.d:ro
+        - ./resources/certs:/etc/nginx/certs
+      logging:
+        driver: json-file
+        options:
+          max-size: 200m
+          max-file: '10'
+      depends_on:
+        - geoserver
+      ports:
+        - "80:80"
+        - "443:443"
+      networks:
+        default:
+          aliases:
+            - ${HOSTNAME}
